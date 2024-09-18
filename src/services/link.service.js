@@ -3,34 +3,61 @@ const { Link } = require('../models');
 const ApiError = require('../utils/ApiError');
 
 /**
+ * Generate a random slug
+ * @returns {string}
+ */
+const generateRandomSlug = () => {
+  return Math.random().toString(36).substr(2, 8);
+};
+
+/**
+ * Generate a unique slug
+ * @returns {Promise<string>}
+ */
+const generateUniqueSlug = async (maxAttempts = 10) => {
+  const attempts = Array.from({ length: maxAttempts }, () => generateRandomSlug());
+
+  // Check all slugs in parallel
+  const checkUniqueSlugs = async () => {
+    const slugChecks = attempts.map(async (slug) => ({
+      slug,
+      isUnique: !(await Link.isSlugTaken(slug)),
+    }));
+
+    const results = await Promise.all(slugChecks);
+    const uniqueSlug = results.find((result) => result.isUnique);
+
+    if (uniqueSlug) {
+      return uniqueSlug.slug;
+    }
+
+    throw new ApiError(httpStatus.INTERNAL_SERVER_ERROR, 'Unable to generate a unique slug after multiple attempts.');
+  };
+
+  return checkUniqueSlugs();
+};
+
+/**
  * Create a new short link
  * @param {User} user - The user creating the link
  * @param {Object} linkBody - The link data
  * @returns {Promise<Link>}
  */
 const createLink = async (user, linkBody) => {
-    if (linkBody.slug && (await Link.isSlugTaken(linkBody.slug))) {
-        throw new ApiError(httpStatus.BAD_REQUEST, 'Slug is already taken');
-    }
+  if (linkBody.slug && (await Link.isSlugTaken(linkBody.slug))) {
+    throw new ApiError(httpStatus.BAD_REQUEST, 'Slug is already taken');
+  }
 
-    // Generate a unique slug if none is provided
-    if (!linkBody.slug) {
-        let slugGenerated = false;
-        while (!slugGenerated) {
-            const potentialSlug = generateRandomSlug();
-            if (!(await Link.isSlugTaken(potentialSlug))) {
-                linkBody.slug = potentialSlug;
-                slugGenerated = true;
-            }
-        }
-    }
+  // Generate a unique slug if none is provided
+  const slug = linkBody.slug || (await generateUniqueSlug());
 
-    const link = new Link({
-        ...linkBody,
-        user: user.id,
-    });
-    await link.save();
-    return link;
+  const link = new Link({
+    ...linkBody,
+    slug,
+    user: user.id,
+  });
+  await link.save();
+  return link;
 };
 
 /**
@@ -40,8 +67,8 @@ const createLink = async (user, linkBody) => {
  * @returns {Promise<QueryResult>}
  */
 const queryLinks = async (filter, options) => {
-    const links = await Link.paginate(filter, options);
-    return links;
+  const links = await Link.paginate(filter, options);
+  return links;
 };
 
 /**
@@ -50,7 +77,7 @@ const queryLinks = async (filter, options) => {
  * @returns {Promise<Link>}
  */
 const getLinkById = async (id) => {
-    return Link.findById(id);
+  return Link.findById(id);
 };
 
 /**
@@ -60,18 +87,18 @@ const getLinkById = async (id) => {
  * @returns {Promise<Link>}
  */
 const updateLinkById = async (linkId, updateBody) => {
-    const link = await getLinkById(linkId);
-    if (!link) {
-        throw new ApiError(httpStatus.NOT_FOUND, 'Link not found');
-    }
+  const link = await getLinkById(linkId);
+  if (!link) {
+    throw new ApiError(httpStatus.NOT_FOUND, 'Link not found');
+  }
 
-    if (updateBody.slug && (await Link.isSlugTaken(updateBody.slug, linkId))) {
-        throw new ApiError(httpStatus.BAD_REQUEST, 'Slug is already taken');
-    }
+  if (updateBody.slug && (await Link.isSlugTaken(updateBody.slug, linkId))) {
+    throw new ApiError(httpStatus.BAD_REQUEST, 'Slug is already taken');
+  }
 
-    Object.assign(link, updateBody);
-    await link.save();
-    return link;
+  Object.assign(link, updateBody);
+  await link.save();
+  return link;
 };
 
 /**
@@ -80,26 +107,18 @@ const updateLinkById = async (linkId, updateBody) => {
  * @returns {Promise<Link>}
  */
 const deleteLinkById = async (linkId) => {
-    const link = await getLinkById(linkId);
-    if (!link) {
-        throw new ApiError(httpStatus.NOT_FOUND, 'Link not found');
-    }
-    await link.remove();
-    return link;
-};
-
-/**
- * Generate a random slug
- * @returns {string}
- */
-const generateRandomSlug = () => {
-    return Math.random().toString(36).substr(2, 8);
+  const link = await getLinkById(linkId);
+  if (!link) {
+    throw new ApiError(httpStatus.NOT_FOUND, 'Link not found');
+  }
+  await link.remove();
+  return link;
 };
 
 module.exports = {
-    createLink,
-    queryLinks,
-    getLinkById,
-    updateLinkById,
-    deleteLinkById,
+  createLink,
+  queryLinks,
+  getLinkById,
+  updateLinkById,
+  deleteLinkById,
 };
